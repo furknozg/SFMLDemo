@@ -3,149 +3,282 @@
 #include <iostream>
 #include <cstdlib>
 #include <optional>
+#include <typeindex>
+#include <type_traits>
+#include <random> // Required for modern random tools
 
-enum Shape2D
+
+#define WINDOW_WIDTH 800
+#define WINDOW_HEIGHT 600
+
+
+
+using EntityId = std::uint32_t;
+
+// entity will have an arbitrary number of components,
+// and each component will have an arbitrary number of systems
+// that operate on it.
+// The entity will be responsible for managing the components and systems,
+// and will provide an interface for adding, removing, and accessing them.
+struct Component
 {
-    SHAPE_CIRCLE,
-    SHAPE_RECTANGLE
+    virtual ~Component() = default;
+};
+
+struct TransformComponent : public Component
+{
+    sf::Vector2f position;
+
+    TransformComponent(float x, float y)
+        : position(x, y)
+    {
+    }
+};
+struct VelocityComponent : public Component
+{
+    sf::Vector2f velocity;
+
+    VelocityComponent(float x, float y)
+        : velocity(x, y)
+    {
+    }
+};
+
+struct Material
+{
+    sf::Color fillColor = sf::Color::White;
+    sf::Color outlineColor = sf::Color::Transparent;
+    float outlineThickness = 0.0f;
+};
+
+struct RenderComponent : public Component
+{
+    std::shared_ptr<sf::Drawable> drawable;
+    Material material;
+
+    RenderComponent(std::shared_ptr<sf::Drawable> drawable, Material material = {})
+        : drawable(std::move(drawable)),
+          material(material)
+    {
+    }
 };
 
 
 
-class Transform2D
+class Registry
 {
-    sf::Vector2f m_position;
-    sf::Angle m_rotation;
-    sf::Vector2f m_scale;
+    std::unordered_map<EntityId, TransformComponent> m_transforms;
+    std::unordered_map<EntityId, VelocityComponent> m_velocities;
+    std::unordered_map<EntityId, RenderComponent> m_renders;
 
 public:
-    Transform2D(const sf::Transformable &data)
-        : m_position(data.getPosition()), m_rotation(data.getRotation()), m_scale(data.getScale())
+    void addTransform(EntityId entity, TransformComponent component)
     {
+        m_transforms.insert_or_assign(entity, std::move(component));
+    }
+    void addRender(EntityId entity, RenderComponent component)
+    {
+        m_renders.insert_or_assign(entity, std::move(component));
+    }
+
+    void addVelocity(EntityId entity, VelocityComponent component)
+    {
+        m_velocities.insert_or_assign(entity, std::move(component));
+    }
+
+    bool hasTransform(EntityId entity) const
+    {
+        return m_transforms.find(entity) != m_transforms.end();
+    }
+    bool hasRender(EntityId entity) const
+    {
+        return m_renders.find(entity) != m_renders.end();
+    }
+    bool hasVelocity(EntityId entity) const
+    {
+        return m_velocities.find(entity) != m_velocities.end();
+    }
+
+    RenderComponent &getRender(EntityId entity)
+    {
+        return m_renders.at(entity);
+    }
+    VelocityComponent &getVelocity(EntityId entity)
+    {
+        return m_velocities.at(entity);
+    }
+
+    TransformComponent &getTransform(EntityId entity)
+    {
+        return m_transforms.at(entity);
+    }
+
+    const std::unordered_map<EntityId, RenderComponent> &renders() const
+    {
+        return m_renders;
+    }
+
+    const std::unordered_map<EntityId, VelocityComponent> &velocities() const
+    {
+        return m_velocities;
+    }
+
+    const std::unordered_map<EntityId, TransformComponent> &transforms() const
+    {
+        return m_transforms;
     }
 };
 
-class Text2D
+class Entity
 {
-    std::string m_text = "Sample Text";
-    sf::Font m_font;
-    Transform2D m_transform;
-    sf::Text m_sfText = sf::Text(m_font, m_text); // SFML text object for rendering
+private:
+    EntityId m_id;
+    std::string m_tag;
+
 public:
-    Text2D(const std::string &text, const sf::Font &font, const Transform2D *transform)
-        : m_text(text), m_font(font), m_transform(*transform)
+    Entity(EntityId id, std::string tag)
+        : m_id(id), m_tag(std::move(tag))
     {
-        m_sfText.setFont(m_font);
-        m_sfText.setString(m_text);
     }
 
-    void draw(sf::RenderWindow &window)
+    EntityId id() const
     {
-        // draw text
-        // Implementation for drawing text
-        window.draw(m_sfText);
+        return m_id;
+    }
+
+    const std::string &tag() const
+    {
+        return m_tag;
     }
 };
 
-
-class Drawable2D // our main entity-like class.
+class System
 {
-
-    std::string m_name = "Drawable2D";
-    Transform2D m_transform;
-    Shape2D m_shape;
-    
-
-    void drawCircle()
-    {
-        // draw circle
-    }
-    void drawRectangle()
-    {
-        // draw rectangle
-    }
-
 public:
-    Drawable2D(const std::string &name, const Transform2D *transform, const Shape2D shape)
-        : m_name(name), m_transform(*transform), m_shape(shape)
-    {
-    }
+    virtual ~System() = default;
+    virtual void update(float dt, Registry &registry) = 0;
+};
 
-    void draw(sf::RenderWindow &window)
+class MovementSystem : public System
+{
+public:
+    void update(float dt, Registry &registry) override
     {
-        switch (m_shape)
+        for (const auto &[entity, velocity] : registry.velocities())
         {
-        case SHAPE_CIRCLE:
-            // draw circle
-            drawCircle();
-            break;
-        case SHAPE_RECTANGLE:
-            // draw rectangle
-            drawRectangle();
-            break;
-        default:
-            std::cerr << "Unknown shape type: " << m_shape << std::endl;
-            break;
+            if (!registry.hasTransform(entity))
+            {
+                continue;
+            }
+
+            auto &transform = registry.getTransform(entity);
+
+            transform.position += velocity.velocity * dt;
         }
     }
 };
 
-
-class Entity
-{
-    std::string m_name = "Entity";
-    Drawable2D m_drawable;
-    Text2D m_text;
-
-public:
-    Entity(const std::string &name, const Drawable2D *drawable, const Text2D *text)
-        : m_name(name), m_drawable(*drawable), m_text(*text)
+class WallCollisionSystem : public System {
+    public:
+    void update(float dt, Registry &registry) override
     {
-    }
+        for (const auto &[entity, transform] : registry.transforms())
+        {
+            if (!registry.hasVelocity(entity))
+            {
+                continue;
+            }
 
-    void update()
-    {
+            auto &velocity = registry.getVelocity(entity);
+
+            if (transform.position.x >= WINDOW_WIDTH || transform.position.x <= 0) {
+                velocity.velocity.x *= -1;
+            } 
+            if (transform.position.y >= WINDOW_HEIGHT || transform.position.y <= 0) {
+                velocity.velocity.y *= -1;
+                
+            } 
+            
+        }
     }
 };
 
+class RenderSystem
+{
+public:
+    void update(sf::RenderWindow &window, Registry &registry)
+    {
+        for (const auto &[entity, render] : registry.renders())
+        {
+            if (!registry.hasTransform(entity))
+            {
+                continue;
+            }
 
+            auto &transform = registry.getTransform(entity);
 
+            auto transformable =
+                dynamic_cast<sf::Transformable *>(render.drawable.get());
+
+            if (transformable)
+            {
+                transformable->setPosition(transform.position);
+            }
+
+            window.draw(*render.drawable);
+        }
+    }
+};
+
+class RandomNumberGenerator {
+    std::random_device rd;
+    std::mt19937 gen;
+    std::uniform_real_distribution<float> dist; 
+    public:
+        RandomNumberGenerator(float min, float max):
+            gen(rd()), dist(min,max)
+
+        {
+        }
+        float getRand(){
+            return dist(gen);
+        }
+};
 
 int main()
 {
+    int entity_ctr = 0;
     sf::RenderWindow window(
-        sf::VideoMode({800, 600}),
-        "Single Circle");
+        sf::VideoMode({WINDOW_WIDTH, WINDOW_HEIGHT}),
+        "Text Based engine");
 
     sf::Font font;
+    
     if (!font.openFromFile("fonts/arial.ttf"))
     {
         return EXIT_FAILURE;
     }
+    RandomNumberGenerator rand(45.0f, 100.0f);
 
-    sf::CircleShape circle(50.0f);
-    circle.setFillColor(sf::Color::Green);
-    circle.setPosition({350.0f, 250.0f});
+    Registry registry;
+    Entity circle(0, "Circle");
+    auto circleShape = std::make_shared<sf::CircleShape>(40.0f);
+    circleShape->setFillColor(sf::Color::Green);
+    registry.addVelocity(circle.id(), VelocityComponent{rand.getRand(), rand.getRand()});
+    registry.addTransform(circle.id(), TransformComponent{2.0f, 2.0f});
+    registry.addRender(circle.id(), RenderComponent{circleShape});
+    
 
-    Text2D text("Circle", font, nullptr);
-    text.setFillColor(sf::Color::White);
+    MovementSystem movementSystem;
+    RenderSystem renderSystem;
+    WallCollisionSystem wallCollisionSystem;
 
-    const sf::FloatRect circleBounds = circle.getLocalBounds();
-    const sf::FloatRect textBounds = text.getLocalBounds();
-
-    const sf::Vector2f circleCenter{
-        circleBounds.position.x + circleBounds.size.x / 2.0f,
-        circleBounds.position.y + circleBounds.size.y / 2.0f};
-
-    const sf::Vector2f textCenter{
-        textBounds.position.x + textBounds.size.x / 2.0f,
-        textBounds.position.y + textBounds.size.y / 2.0f};
-
-    text.setPosition(circle.getPosition() + circleCenter - textCenter);
+    sf::Clock clock;
 
     // event loop/render loop
     while (window.isOpen())
     {
+        float dt = clock.restart().asSeconds();
         while (const std::optional event = window.pollEvent())
         {
             if (event->is<sf::Event::Closed>())
@@ -154,9 +287,12 @@ int main()
             }
         }
 
-        window.clear(sf::Color::Black);
-        window.draw(circle);
-        window.draw(text);
+        movementSystem.update(dt, registry);
+        wallCollisionSystem.update(dt,registry);
+
+        
+        window.clear();
+        renderSystem.update(window, registry);
         window.display();
     }
 
