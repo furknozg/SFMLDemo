@@ -65,6 +65,8 @@ struct RenderComponent : public Component
 
 
 
+
+
 class Registry
 {
     std::unordered_map<EntityId, TransformComponent> m_transforms;
@@ -190,11 +192,31 @@ class WallCollisionSystem : public System {
             }
 
             auto &velocity = registry.getVelocity(entity);
+            auto &render = registry.getRender(entity);
 
-            if (transform.position.x >= WINDOW_WIDTH || transform.position.x <= 0) {
+            auto* circle = dynamic_cast<sf::CircleShape*>(render.drawable.get());
+            auto* rect = dynamic_cast<sf::RectangleShape*>(render.drawable.get());
+
+            float w_x = 0;
+            float w_y = 0;
+            if (circle) 
+            {
+                w_x = 2 * circle->getRadius();
+                w_y = 2 * circle->getRadius();
+            }
+
+            if (rect) 
+            {
+                sf::Vector2f r_size = rect->getSize();
+                w_x = r_size.x;
+                w_y = r_size.y;
+            }
+            
+
+            if (transform.position.x + w_x >= WINDOW_WIDTH || transform.position.x <= 0) {
                 velocity.velocity.x *= -1;
             } 
-            if (transform.position.y >= WINDOW_HEIGHT || transform.position.y <= 0) {
+            if (transform.position.y + w_y >= WINDOW_HEIGHT || transform.position.y <= 0) {
                 velocity.velocity.y *= -1;
                 
             } 
@@ -258,7 +280,7 @@ int main()
     {
         return EXIT_FAILURE;
     }
-    RandomNumberGenerator rand(45.0f, 100.0f);
+    RandomNumberGenerator rand(-400.0f, 400.0f);
 
     Registry registry;
     Entity circle(0, "Circle");
@@ -267,6 +289,14 @@ int main()
     registry.addVelocity(circle.id(), VelocityComponent{rand.getRand(), rand.getRand()});
     registry.addTransform(circle.id(), TransformComponent{2.0f, 2.0f});
     registry.addRender(circle.id(), RenderComponent{circleShape});
+    
+
+    Entity rect(1, "rect");
+    auto rectShape = std::make_shared<sf::RectangleShape>(sf::Vector2f(40.0f, 40.0f));
+    rectShape->setFillColor(sf::Color::Blue);
+    registry.addVelocity(rect.id(), VelocityComponent{rand.getRand(), rand.getRand()});
+    registry.addTransform(rect.id(), TransformComponent{4.0f, 6.0f});
+    registry.addRender(rect.id(), RenderComponent{rectShape});
     
 
     MovementSystem movementSystem;
