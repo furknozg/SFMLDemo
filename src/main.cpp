@@ -451,6 +451,18 @@ public:
     {
         return  { (unsigned int) m_window_width, (unsigned int)m_window_height};
     }
+    sf::Font getFont()
+    {
+        sf::Font font;
+
+        if (!font.openFromFile(m_font_config.filePath))
+        {
+            return;
+        }
+
+        return font;
+    //R
+    }
 };
 
 int main()

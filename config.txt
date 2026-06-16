@@ -1,4 +1,4 @@
-Window 800 600
+Window 1920 1080
 Font fonts/arial.ttf 18 255 255 255
 Circle CGreen 100 100 -300 200 0 255 0 50
 Circle CBlue 200 200 200 400 0 0 255 100
