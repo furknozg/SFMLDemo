@@ -174,10 +174,10 @@ public:
     }
 };
 
-class WallCollisionSystem : public System
+class WallCollisionSystem
 {
 public:
-    void update(float dt, Registry &registry) override
+    void update(float dt, int window_width, int window_height, Registry &registry)
     {
         for (const auto &[entity, transform] : registry.transforms())
         {
@@ -207,11 +207,11 @@ public:
                 w_y = r_size.y;
             }
 
-            if (transform.position.x + w_x >= WINDOW_WIDTH || transform.position.x <= 0)
+            if (transform.position.x + w_x >= window_width || transform.position.x <= 0)
             {
                 velocity.velocity.x *= -1;
             }
-            if (transform.position.y + w_y >= WINDOW_HEIGHT || transform.position.y <= 0)
+            if (transform.position.y + w_y >= window_height || transform.position.y <= 0)
             {
                 velocity.velocity.y *= -1;
             }
@@ -447,6 +447,10 @@ public:
             m_lineIndex++;
         }
     }
+    std::vector<unsigned int> getWindow()
+    {
+        return  { (unsigned int) m_window_width, (unsigned int)m_window_height};
+    }
 };
 
 int main()
@@ -455,8 +459,9 @@ int main()
     ConfigLoader config("config.txt");
     config.LoadEntities(&registry);
 
+    std::vector<unsigned int> dims = config.getWindow();
     sf::RenderWindow window(
-        sf::VideoMode({WINDOW_WIDTH, WINDOW_HEIGHT}),
+        sf::VideoMode({dims[0], dims[1]}),
         "Text Based engine");
 
     sf::Font font;
@@ -486,7 +491,7 @@ int main()
         }
 
         movementSystem.update(dt, registry);
-        wallCollisionSystem.update(dt, registry);
+        wallCollisionSystem.update(dt, dims[0], dims[1], registry);
 
         window.clear();
         renderSystem.update(window, registry);
