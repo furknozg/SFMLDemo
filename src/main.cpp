@@ -457,7 +457,7 @@ public:
 
         if (!font.openFromFile(m_font_config.filePath))
         {
-            return;
+            return font;
         }
 
         return font;
