@@ -297,15 +297,36 @@ public:
                 auto &text = registry.getTextRender(entity);
                 auto transformableText =
                     dynamic_cast<sf::Transformable *>(text.drawable.get());
+
+                auto *circle = dynamic_cast<sf::CircleShape *>(render.drawable.get());
+                auto *rect = dynamic_cast<sf::RectangleShape *>(render.drawable.get());
+                float w_x = 0;
+                float w_y = 0;
+                if (circle)
+                {
+                    w_x = 2 * circle->getRadius();
+                    w_y = 2 * circle->getRadius();
+                }
                 
+                if (rect)
+                {
+                    sf::Vector2f r_size = rect->getSize();
+                    w_x = r_size.x;
+                    w_y = r_size.y;
+                }
+                
+                auto textBounds =
+                    dynamic_cast<sf::Text *>(text.drawable.get())->getGlobalBounds();
+
                 if (transformableText)
                 {
-                    transformableText->setPosition(transform.position);
+                    transformableText->setPosition(sf::Vector2f(
+                        transform.position.x + w_x/2 - textBounds.size.x/2 , 
+                        transform.position.y + w_y/2 - textBounds.size.y/2));
                 }
                 applyMaterial(text);
                 window.draw(*text.drawable);
             }
-
         }
     }
 };
