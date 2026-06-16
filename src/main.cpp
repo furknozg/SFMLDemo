@@ -54,7 +54,6 @@ struct RenderComponent : public Component
 {
     std::shared_ptr<sf::Drawable> drawable;
     Material material;
-
     RenderComponent(std::shared_ptr<sf::Drawable> drawable, Material material = {})
         : drawable(std::move(drawable)),
           material(material)
@@ -222,6 +221,19 @@ public:
 
 class RenderSystem
 {
+    void applyMaterial(const RenderComponent &render)
+    {
+        auto *shape = dynamic_cast<sf::Shape *>(render.drawable.get());
+        if (!shape)
+        {
+            return;
+        }
+
+        shape->setFillColor(render.material.fillColor);
+        shape->setOutlineColor(render.material.outlineColor);
+        shape->setOutlineThickness(render.material.outlineThickness);
+    }
+
 public:
     void update(sf::RenderWindow &window, Registry &registry)
     {
@@ -242,6 +254,7 @@ public:
                 transformable->setPosition(transform.position);
             }
 
+            applyMaterial(render);
             window.draw(*render.drawable);
         }
     }
@@ -264,29 +277,35 @@ public:
     }
 };
 
-enum class ConfigStatementType 
+enum class ConfigStatementType
 {
     WINDOW,
     FONT,
     ENTITY_LIKE
 };
-struct FontConfig 
+enum class EntityType
+{
+    RECTANGLE,
+    CIRCLE
+};
+
+struct FontConfig
 {
     std::string filePath;
     int size;
-    std::vector<int> RGB = {0,0,0};
+    std::vector<int> RGB = {0, 0, 0};
 };
 
 class ConfigLoader
 {
     std::string m_filePath;
-    std::vector<Entity> *entities = new std::vector<Entity>;
-
+    Registry *m_registry;
     int m_window_width;
     int m_window_height;
     FontConfig m_font_config;
-    
-    std::vector<std::string> splitWords(const std::string& line)
+    int m_lineIndex = 0;
+
+    std::vector<std::string> splitWords(const std::string &line)
     {
         std::stringstream ss(line);
 
@@ -301,7 +320,68 @@ class ConfigLoader
         return words;
     }
 
-    ConfigStatementType getStatementType(const std::string& str)
+    EntityType getEntityType(const std::string &line)
+    {
+        static const std::map<std::string, EntityType> typeMap = {
+            {"Circle", EntityType::CIRCLE},
+            {"Rectangle", EntityType::RECTANGLE},
+        };
+        auto it = typeMap.find(line);
+        if (it != typeMap.end())
+        {
+            return it->second;
+        }
+        std::cout << "Warn: Entity type not in configuration loader. Defaulting to ENTITY_LIKE" << std::endl;
+        return EntityType::CIRCLE;
+    }
+
+    void parseAndLoadEntity(const std::string &line, int index)
+    {
+        std::vector<std::string> words = splitWords(line);
+
+        EntityType type = getEntityType(words[0]);
+        // Circle shapename initialposition(x,y) initialspeed(x,y) r,g,b, size(R)
+        // Rectangle shapename initialposition(x,y) initialspeed(x,y) r,g,b, size(x,y)
+        std::string shapeName = words[1];
+        TransformComponent position(std::stof(words[2]), std::stof(words[3]));
+        VelocityComponent velocity(std::stof(words[4]), std::stof(words[5]));
+        Material material = {
+            fillColor : sf::Color(std::stoi(words[6]), std::stoi(words[7]), std::stoi(words[8]))
+        };
+        RenderComponent *rc;
+
+        //       Registry registry;
+        // Entity circle(0, "Circle");
+        // auto circleShape = std::make_shared<sf::CircleShape>(40.0f);
+        // circleShape->setFillColor(sf::Color::Green);
+        m_registry->addVelocity(m_lineIndex,velocity);
+        m_registry->addTransform(m_lineIndex,position);
+        // registry.addRender(circle.id(), RenderComponent{circleShape});
+
+        if (type == EntityType::CIRCLE)
+        {
+            Entity circle(m_lineIndex, shapeName);
+            auto circleShape = std::make_shared<sf::CircleShape>(std::stof(words[9]));
+            RenderComponent rc = RenderComponent(circleShape, material);
+
+            m_registry->addRender(m_lineIndex, rc);
+
+
+        }
+        else if (type == EntityType::RECTANGLE)
+        {
+            sf::Vector2f size = {std::stof(words[9]), std::stof(words[10])};
+            Entity rect(m_lineIndex, shapeName);
+            auto rectShape = std::make_shared<sf::RectangleShape>(size);
+            RenderComponent rc = RenderComponent(rectShape, material);
+
+            m_registry->addRender(m_lineIndex, rc);
+
+
+        }
+    };
+
+    ConfigStatementType getStatementType(const std::string &str)
     {
         static const std::map<std::string, ConfigStatementType> statementMap = {
             {"Window", ConfigStatementType::WINDOW},
@@ -309,47 +389,43 @@ class ConfigLoader
             {"Circle", ConfigStatementType::ENTITY_LIKE},
             {"Square", ConfigStatementType::ENTITY_LIKE},
         };
-            auto it = statementMap.find(str);
-            if (it != statementMap.end()) {
-                return it->second;
-            }
-            std::cout << "Warn: Entity type not in configuration loader. Defaulting to ENTITY_LIKE" << std::endl;
-            return ConfigStatementType::ENTITY_LIKE;
-
+        auto it = statementMap.find(str);
+        if (it != statementMap.end())
+        {
+            return it->second;
+        }
+        std::cout << "Warn: Entity type not in configuration loader. Defaulting to ENTITY_LIKE" << std::endl;
+        return ConfigStatementType::ENTITY_LIKE;
     };
 
-    void parserHandler(std::string line){
-        ConfigStatementType type = getStatementType(line);
+    void parserHandler(std::string line)
+    {
         std::vector<std::string> words = splitWords(line);
+        ConfigStatementType type = getStatementType(words[0]);
+
         switch (type)
         {
-            
+
         case ConfigStatementType::WINDOW:
-            m_window_width = std::stoi(words[2]);
-            m_window_height = std::stoi(words[2]);     
+            m_window_width = std::stoi(words[1]);
+            m_window_height = std::stoi(words[2]);
             break;
         case ConfigStatementType::FONT:
             // 5 args
             m_font_config = {
-                filePath: words[1],
-                size: std::stoi(words[2]),
-                RGB: {std::stoi(words[3]),std::stoi(words[4]),std::stoi(words[5])}
+                filePath : words[1],
+                size : std::stoi(words[2]),
+                RGB : {std::stoi(words[3]), std::stoi(words[4]), std::stoi(words[5])}
             };
 
             break;
         case ConfigStatementType::ENTITY_LIKE:
-            
+            parseAndLoadEntity(line, m_lineIndex);
             break;
         default:
             break;
         }
-
-    }
-    void readLines(std::ifstream &file)
-    {
-        
-
-    }
+    };
 
 public:
     ConfigLoader(std::string filePath) : m_filePath(filePath)
@@ -357,15 +433,28 @@ public:
     }
     void LoadEntities(Registry *data)
     {
-    }
-    std::vector<Entity>* getEntities(){
-        return entities;
+        m_registry = data;
+        std::ifstream file(m_filePath);
+        if (!file)
+        {
+            std::cerr << "Could not open file\n";
+            return;
+        }
+        std::string line;
+        while (std::getline(file, line))
+        {
+            parserHandler(line);
+            m_lineIndex++;
+        }
     }
 };
 
 int main()
 {
-    int entity_ctr = 0;
+    Registry registry;
+    ConfigLoader config("config.txt");
+    config.LoadEntities(&registry);
+
     sf::RenderWindow window(
         sf::VideoMode({WINDOW_WIDTH, WINDOW_HEIGHT}),
         "Text Based engine");
@@ -376,22 +465,7 @@ int main()
     {
         return EXIT_FAILURE;
     }
-    RandomNumberGenerator rand(-400.0f, 400.0f);
-
-    Registry registry;
-    Entity circle(0, "Circle");
-    auto circleShape = std::make_shared<sf::CircleShape>(40.0f);
-    circleShape->setFillColor(sf::Color::Green);
-    registry.addVelocity(circle.id(), VelocityComponent{rand.getRand(), rand.getRand()});
-    registry.addTransform(circle.id(), TransformComponent{2.0f, 2.0f});
-    registry.addRender(circle.id(), RenderComponent{circleShape});
-
-    Entity rect(1, "rect");
-    auto rectShape = std::make_shared<sf::RectangleShape>(sf::Vector2f(40.0f, 40.0f));
-    rectShape->setFillColor(sf::Color::Blue);
-    registry.addVelocity(rect.id(), VelocityComponent{rand.getRand(), rand.getRand()});
-    registry.addTransform(rect.id(), TransformComponent{4.0f, 6.0f});
-    registry.addRender(rect.id(), RenderComponent{rectShape});
+    //RandomNumberGenerator rand(-400.0f, 400.0f);
 
     MovementSystem movementSystem;
     RenderSystem renderSystem;
