@@ -1,6 +1,47 @@
 -------------------------------------------------------------------------------
 COMP 4300 - Assignment 1
 -------------------------------------------------------------------------------
+How I implemented it:
+-------------------------------------------------------------------------------
+
+I built the program around a small ECS-style setup instead of keeping one big
+shape vector in main. Each shape gets an entity id, and then its data is split
+into components:
+
+- TransformComponent stores the current position
+- VelocityComponent stores how fast the shape moves
+- RenderComponent stores the SFML shape and its material/color data
+
+The Registry owns the component maps. Systems ask the Registry for the pieces
+they need:
+
+- MovementSystem updates position using velocity * dt
+- WallCollisionSystem checks the shape against the window borders and flips the
+  velocity when it hits a wall
+- RenderSystem copies the TransformComponent position onto the SFML drawable,
+  applies the material, and draws it
+
+The ConfigLoader reads config.txt line by line. Window lines set the window
+size, Font lines store font information, and shape lines create the correct
+SFML shape, then add transform, velocity, and render components to the Registry.
+This means the render loop does not care where the shapes came from. It just
+runs the systems every frame.
+
+The main loop is intentionally simple:
+
+1. Read config.txt and load all entities into the Registry
+2. Create the SFML window using the config size
+3. Each frame, calculate dt
+4. Handle close events
+5. Move shapes
+6. Bounce shapes off the walls
+7. Clear, draw, and display
+
+I used shared_ptr for the drawable because circles and rectangles are different
+SFML types, but both can be treated as sf::Drawable/sf::Shape when drawing and
+setting material values.
+
+-------------------------------------------------------------------------------
 Assignment Notes:
 -------------------------------------------------------------------------------
 

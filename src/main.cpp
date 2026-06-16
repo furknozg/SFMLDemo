@@ -14,9 +14,12 @@
 
 using EntityId = std::uint32_t;
 
+// I used an ECS-style layout here so the data for a shape is separated from
+// the logic that acts on it. An entity is just an id, and the Registry connects
+// that id to whatever components the shape needs.
 // entity will have an arbitrary number of components,
-// and each component will have an arbitrary number of systems
-// that operate on it.
+// and each component will have an arbitrary number of systems 
+// that could operate on it.
 // The entity will be responsible for managing the components and systems,
 // and will provide an interface for adding, removing, and accessing them.
 struct Component
@@ -63,6 +66,8 @@ struct RenderComponent : public Component
 
 class Registry
 {
+    // Each map stores one kind of component, keyed by the entity id.
+    // If an entity has entries in multiple maps, the systems can combine them.
     std::unordered_map<EntityId, TransformComponent> m_transforms;
     std::unordered_map<EntityId, VelocityComponent> m_velocities;
     std::unordered_map<EntityId, RenderComponent> m_renders;
@@ -160,6 +165,8 @@ class MovementSystem : public System
 public:
     void update(float dt, Registry &registry) override
     {
+        // Move every entity that has both velocity and position.
+        // Multiplying by dt keeps movement based on time instead of frame count.
         for (const auto &[entity, velocity] : registry.velocities())
         {
             if (!registry.hasTransform(entity))
@@ -179,6 +186,8 @@ class WallCollisionSystem
 public:
     void update(float dt, int window_width, int window_height, Registry &registry)
     {
+        // Check the rendered shape size so circles and rectangles can bounce
+        // using the same collision rule.
         for (const auto &[entity, transform] : registry.transforms())
         {
             if (!registry.hasVelocity(entity))
@@ -223,6 +232,8 @@ class RenderSystem
 {
     void applyMaterial(const RenderComponent &render)
     {
+        // RenderComponent stores sf::Drawable so different drawable types can
+        // be kept together. Material only applies to sf::Shape subclasses.
         auto *shape = dynamic_cast<sf::Shape *>(render.drawable.get());
         if (!shape)
         {
@@ -237,6 +248,8 @@ class RenderSystem
 public:
     void update(sf::RenderWindow &window, Registry &registry)
     {
+        // Rendering is the final system. It copies component data back onto
+        // SFML objects, then draws whatever drawable is stored for the entity.
         for (const auto &[entity, render] : registry.renders())
         {
             if (!registry.hasTransform(entity))
@@ -340,8 +353,9 @@ class ConfigLoader
         std::vector<std::string> words = splitWords(line);
 
         EntityType type = getEntityType(words[0]);
-        // Circle shapename initialposition(x,y) initialspeed(x,y) r,g,b, size(R)
-        // Rectangle shapename initialposition(x,y) initialspeed(x,y) r,g,b, size(x,y)
+        // Shape lines all start the same way:
+        // Type name initialPosition(x,y) initialSpeed(x,y) color(r,g,b)
+        // Circles then have radius, while rectangles have width and height.
         std::string shapeName = words[1];
         TransformComponent position(std::stof(words[2]), std::stof(words[3]));
         VelocityComponent velocity(std::stof(words[4]), std::stof(words[5]));
@@ -350,13 +364,10 @@ class ConfigLoader
         };
         RenderComponent *rc;
 
-        //       Registry registry;
-        // Entity circle(0, "Circle");
-        // auto circleShape = std::make_shared<sf::CircleShape>(40.0f);
-        // circleShape->setFillColor(sf::Color::Green);
+        // Add the shared components first. The shape-specific render component
+        // gets added below after I know whether this line is a circle or rect.
         m_registry->addVelocity(m_lineIndex,velocity);
         m_registry->addTransform(m_lineIndex,position);
-        // registry.addRender(circle.id(), RenderComponent{circleShape});
 
         if (type == EntityType::CIRCLE)
         {
@@ -467,6 +478,8 @@ public:
 
 int main()
 {
+    // Load config into the registry before creating the game loop. After this,
+    // main only has to run the systems in order every frame.
     Registry registry;
     ConfigLoader config("config.txt");
     config.LoadEntities(&registry);
