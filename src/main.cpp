@@ -1,17 +1,16 @@
 #include <SFML/Graphics.hpp>
 
 #include <iostream>
+#include <fstream>
 #include <cstdlib>
 #include <optional>
 #include <typeindex>
 #include <type_traits>
 #include <random> // Required for modern random tools
-
+#include <map>
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
-
-
 
 using EntityId = std::uint32_t;
 
@@ -62,10 +61,6 @@ struct RenderComponent : public Component
     {
     }
 };
-
-
-
-
 
 class Registry
 {
@@ -180,8 +175,9 @@ public:
     }
 };
 
-class WallCollisionSystem : public System {
-    public:
+class WallCollisionSystem : public System
+{
+public:
     void update(float dt, Registry &registry) override
     {
         for (const auto &[entity, transform] : registry.transforms())
@@ -194,33 +190,32 @@ class WallCollisionSystem : public System {
             auto &velocity = registry.getVelocity(entity);
             auto &render = registry.getRender(entity);
 
-            auto* circle = dynamic_cast<sf::CircleShape*>(render.drawable.get());
-            auto* rect = dynamic_cast<sf::RectangleShape*>(render.drawable.get());
+            auto *circle = dynamic_cast<sf::CircleShape *>(render.drawable.get());
+            auto *rect = dynamic_cast<sf::RectangleShape *>(render.drawable.get());
 
             float w_x = 0;
             float w_y = 0;
-            if (circle) 
+            if (circle)
             {
                 w_x = 2 * circle->getRadius();
                 w_y = 2 * circle->getRadius();
             }
 
-            if (rect) 
+            if (rect)
             {
                 sf::Vector2f r_size = rect->getSize();
                 w_x = r_size.x;
                 w_y = r_size.y;
             }
-            
 
-            if (transform.position.x + w_x >= WINDOW_WIDTH || transform.position.x <= 0) {
+            if (transform.position.x + w_x >= WINDOW_WIDTH || transform.position.x <= 0)
+            {
                 velocity.velocity.x *= -1;
-            } 
-            if (transform.position.y + w_y >= WINDOW_HEIGHT || transform.position.y <= 0) {
+            }
+            if (transform.position.y + w_y >= WINDOW_HEIGHT || transform.position.y <= 0)
+            {
                 velocity.velocity.y *= -1;
-                
-            } 
-            
+            }
         }
     }
 };
@@ -252,19 +247,120 @@ public:
     }
 };
 
-class RandomNumberGenerator {
+class RandomNumberGenerator
+{
     std::random_device rd;
     std::mt19937 gen;
-    std::uniform_real_distribution<float> dist; 
-    public:
-        RandomNumberGenerator(float min, float max):
-            gen(rd()), dist(min,max)
+    std::uniform_real_distribution<float> dist;
 
+public:
+    RandomNumberGenerator(float min, float max) : gen(rd()), dist(min, max)
+
+    {
+    }
+    float getRand()
+    {
+        return dist(gen);
+    }
+};
+
+enum class ConfigStatementType 
+{
+    WINDOW,
+    FONT,
+    ENTITY_LIKE
+};
+struct FontConfig 
+{
+    std::string filePath;
+    int size;
+    std::vector<int> RGB = {0,0,0};
+};
+
+class ConfigLoader
+{
+    std::string m_filePath;
+    std::vector<Entity> *entities = new std::vector<Entity>;
+
+    int m_window_width;
+    int m_window_height;
+    FontConfig m_font_config;
+    
+    std::vector<std::string> splitWords(const std::string& line)
+    {
+        std::stringstream ss(line);
+
+        std::vector<std::string> words;
+        std::string word;
+
+        while (ss >> word)
         {
+            words.push_back(word);
         }
-        float getRand(){
-            return dist(gen);
+
+        return words;
+    }
+
+    ConfigStatementType getStatementType(const std::string& str)
+    {
+        static const std::map<std::string, ConfigStatementType> statementMap = {
+            {"Window", ConfigStatementType::WINDOW},
+            {"Font", ConfigStatementType::FONT},
+            {"Circle", ConfigStatementType::ENTITY_LIKE},
+            {"Square", ConfigStatementType::ENTITY_LIKE},
+        };
+            auto it = statementMap.find(str);
+            if (it != statementMap.end()) {
+                return it->second;
+            }
+            std::cout << "Warn: Entity type not in configuration loader. Defaulting to ENTITY_LIKE" << std::endl;
+            return ConfigStatementType::ENTITY_LIKE;
+
+    };
+
+    void parserHandler(std::string line){
+        ConfigStatementType type = getStatementType(line);
+        std::vector<std::string> words = splitWords(line);
+        switch (type)
+        {
+            
+        case ConfigStatementType::WINDOW:
+            m_window_width = std::stoi(words[2]);
+            m_window_height = std::stoi(words[2]);     
+            break;
+        case ConfigStatementType::FONT:
+            // 5 args
+            m_font_config = {
+                filePath: words[1],
+                size: std::stoi(words[2]),
+                RGB: {std::stoi(words[3]),std::stoi(words[4]),std::stoi(words[5])}
+            };
+
+            break;
+        case ConfigStatementType::ENTITY_LIKE:
+            
+            break;
+        default:
+            break;
         }
+
+    }
+    void readLines(std::ifstream &file)
+    {
+        
+
+    }
+
+public:
+    ConfigLoader(std::string filePath) : m_filePath(filePath)
+    {
+    }
+    void LoadEntities(Registry *data)
+    {
+    }
+    std::vector<Entity>* getEntities(){
+        return entities;
+    }
 };
 
 int main()
@@ -275,7 +371,7 @@ int main()
         "Text Based engine");
 
     sf::Font font;
-    
+
     if (!font.openFromFile("fonts/arial.ttf"))
     {
         return EXIT_FAILURE;
@@ -289,7 +385,6 @@ int main()
     registry.addVelocity(circle.id(), VelocityComponent{rand.getRand(), rand.getRand()});
     registry.addTransform(circle.id(), TransformComponent{2.0f, 2.0f});
     registry.addRender(circle.id(), RenderComponent{circleShape});
-    
 
     Entity rect(1, "rect");
     auto rectShape = std::make_shared<sf::RectangleShape>(sf::Vector2f(40.0f, 40.0f));
@@ -297,7 +392,6 @@ int main()
     registry.addVelocity(rect.id(), VelocityComponent{rand.getRand(), rand.getRand()});
     registry.addTransform(rect.id(), TransformComponent{4.0f, 6.0f});
     registry.addRender(rect.id(), RenderComponent{rectShape});
-    
 
     MovementSystem movementSystem;
     RenderSystem renderSystem;
@@ -318,9 +412,8 @@ int main()
         }
 
         movementSystem.update(dt, registry);
-        wallCollisionSystem.update(dt,registry);
+        wallCollisionSystem.update(dt, registry);
 
-        
         window.clear();
         renderSystem.update(window, registry);
         window.display();
