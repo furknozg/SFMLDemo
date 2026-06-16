@@ -18,7 +18,7 @@ using EntityId = std::uint32_t;
 // the logic that acts on it. An entity is just an id, and the Registry connects
 // that id to whatever components the shape needs.
 // entity will have an arbitrary number of components,
-// and each component will have an arbitrary number of systems 
+// and each component will have an arbitrary number of systems
 // that could operate on it.
 // The entity will be responsible for managing the components and systems,
 // and will provide an interface for adding, removing, and accessing them.
@@ -71,6 +71,7 @@ class Registry
     std::unordered_map<EntityId, TransformComponent> m_transforms;
     std::unordered_map<EntityId, VelocityComponent> m_velocities;
     std::unordered_map<EntityId, RenderComponent> m_renders;
+    std::unordered_map<EntityId, RenderComponent> m_textRenders;
 
 public:
     void addTransform(EntityId entity, TransformComponent component)
@@ -80,6 +81,10 @@ public:
     void addRender(EntityId entity, RenderComponent component)
     {
         m_renders.insert_or_assign(entity, std::move(component));
+    }
+    void addTextRender(EntityId entity, RenderComponent component)
+    {
+        m_textRenders.insert_or_assign(entity, std::move(component));
     }
 
     void addVelocity(EntityId entity, VelocityComponent component)
@@ -99,10 +104,17 @@ public:
     {
         return m_velocities.find(entity) != m_velocities.end();
     }
-
+    bool hasTextRender(EntityId entity) const
+    {
+        return m_textRenders.find(entity) != m_renders.end();
+    }
     RenderComponent &getRender(EntityId entity)
     {
         return m_renders.at(entity);
+    }
+    RenderComponent &getTextRender(EntityId entity)
+    {
+        return m_textRenders.at(entity);
     }
     VelocityComponent &getVelocity(EntityId entity)
     {
@@ -117,6 +129,10 @@ public:
     const std::unordered_map<EntityId, RenderComponent> &renders() const
     {
         return m_renders;
+    }
+    const std::unordered_map<EntityId, RenderComponent> &textRenders() const
+    {
+        return m_textRenders;
     }
 
     const std::unordered_map<EntityId, VelocityComponent> &velocities() const
@@ -237,7 +253,14 @@ class RenderSystem
         auto *shape = dynamic_cast<sf::Shape *>(render.drawable.get());
         if (!shape)
         {
-            return;
+            // try to get text if render is not a shape
+            auto *text = dynamic_cast<sf::Text *>(render.drawable.get());
+            if (!shape)
+            {
+                std::cerr << "ERROR: RenderComponent is not an instance of Shape or Text" << std::endl;
+            }
+
+            text->setFillColor(render.material.fillColor);
         }
 
         shape->setFillColor(render.material.fillColor);
@@ -266,6 +289,20 @@ public:
             {
                 transformable->setPosition(transform.position);
             }
+
+            if (registry.hasTextRender(entity))
+            {
+                auto &text = registry.getTextRender(entity);
+                auto transformableText =
+                    dynamic_cast<sf::Transformable *>(text.drawable.get());
+                if (transformableText)
+                {
+                    transformableText->setPosition(transform.position);
+                }
+                applyMaterial(text);
+                window.draw(*text.drawable);
+            }
+
 
             applyMaterial(render);
             window.draw(*render.drawable);
@@ -366,8 +403,8 @@ class ConfigLoader
 
         // Add the shared components first. The shape-specific render component
         // gets added below after I know whether this line is a circle or rect.
-        m_registry->addVelocity(m_lineIndex,velocity);
-        m_registry->addTransform(m_lineIndex,position);
+        m_registry->addVelocity(m_lineIndex, velocity);
+        m_registry->addTransform(m_lineIndex, position);
 
         if (type == EntityType::CIRCLE)
         {
@@ -376,8 +413,6 @@ class ConfigLoader
             RenderComponent rc = RenderComponent(circleShape, material);
 
             m_registry->addRender(m_lineIndex, rc);
-
-
         }
         else if (type == EntityType::RECTANGLE)
         {
@@ -387,8 +422,6 @@ class ConfigLoader
             RenderComponent rc = RenderComponent(rectShape, material);
 
             m_registry->addRender(m_lineIndex, rc);
-
-
         }
     };
 
@@ -460,7 +493,7 @@ public:
     }
     std::vector<unsigned int> getWindow()
     {
-        return  { (unsigned int) m_window_width, (unsigned int)m_window_height};
+        return {(unsigned int)m_window_width, (unsigned int)m_window_height};
     }
     sf::Font getFont()
     {
@@ -472,7 +505,7 @@ public:
         }
 
         return font;
-    //R
+        // R
     }
 };
 
@@ -495,7 +528,7 @@ int main()
     {
         return EXIT_FAILURE;
     }
-    //RandomNumberGenerator rand(-400.0f, 400.0f);
+    // RandomNumberGenerator rand(-400.0f, 400.0f);
 
     MovementSystem movementSystem;
     RenderSystem renderSystem;
