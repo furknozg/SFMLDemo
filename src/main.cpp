@@ -250,22 +250,21 @@ class RenderSystem
     {
         // RenderComponent stores sf::Drawable so different drawable types can
         // be kept together. Material only applies to sf::Shape subclasses.
-        auto *shape = dynamic_cast<sf::Shape *>(render.drawable.get());
-        if (!shape)
+        if (auto *shape = dynamic_cast<sf::Shape *>(render.drawable.get()))
         {
-            // try to get text if render is not a shape
-            auto *text = dynamic_cast<sf::Text *>(render.drawable.get());
-            if (!shape)
-            {
-                std::cerr << "ERROR: RenderComponent is not an instance of Shape or Text" << std::endl;
-            }
-
-            text->setFillColor(render.material.fillColor);
+            shape->setFillColor(render.material.fillColor);
+            shape->setOutlineColor(render.material.outlineColor);
+            shape->setOutlineThickness(render.material.outlineThickness);
+            return;
         }
 
-        shape->setFillColor(render.material.fillColor);
-        shape->setOutlineColor(render.material.outlineColor);
-        shape->setOutlineThickness(render.material.outlineThickness);
+        if (auto *text = dynamic_cast<sf::Text *>(render.drawable.get()))
+        {
+            text->setFillColor(render.material.fillColor);
+            return;
+        }
+
+        std::cerr << "ERROR: RenderComponent is not an instance of Shape or Text" << std::endl;
     }
 
 public:
@@ -290,11 +289,15 @@ public:
                 transformable->setPosition(transform.position);
             }
 
+            applyMaterial(render);
+            window.draw(*render.drawable);
+
             if (registry.hasTextRender(entity))
             {
                 auto &text = registry.getTextRender(entity);
                 auto transformableText =
                     dynamic_cast<sf::Transformable *>(text.drawable.get());
+                
                 if (transformableText)
                 {
                     transformableText->setPosition(transform.position);
@@ -303,9 +306,6 @@ public:
                 window.draw(*text.drawable);
             }
 
-
-            applyMaterial(render);
-            window.draw(*render.drawable);
         }
     }
 };
@@ -353,7 +353,14 @@ class ConfigLoader
     int m_window_width;
     int m_window_height;
     FontConfig m_font_config;
+    sf::Font m_font;
+
     int m_lineIndex = 0;
+
+    bool loadFont()
+    {
+        return m_font.openFromFile(m_font_config.filePath);
+    }
 
     std::vector<std::string> splitWords(const std::string &line)
     {
@@ -394,18 +401,18 @@ class ConfigLoader
         // Type name initialPosition(x,y) initialSpeed(x,y) color(r,g,b)
         // Circles then have radius, while rectangles have width and height.
         std::string shapeName = words[1];
-        TransformComponent position(std::stof(words[2]), std::stof(words[3]));
-        VelocityComponent velocity(std::stof(words[4]), std::stof(words[5]));
-        Material material = {
-            fillColor : sf::Color(std::stoi(words[6]), std::stoi(words[7]), std::stoi(words[8]))
-        };
-        RenderComponent *rc;
 
         // Add the shared components first. The shape-specific render component
         // gets added below after I know whether this line is a circle or rect.
+        VelocityComponent velocity(std::stof(words[4]), std::stof(words[5]));
         m_registry->addVelocity(m_lineIndex, velocity);
+
+        TransformComponent position(std::stof(words[2]), std::stof(words[3]));
         m_registry->addTransform(m_lineIndex, position);
 
+        Material material = {
+            fillColor : sf::Color(std::stoi(words[6]), std::stoi(words[7]), std::stoi(words[8]))
+        };
         if (type == EntityType::CIRCLE)
         {
             Entity circle(m_lineIndex, shapeName);
@@ -423,6 +430,14 @@ class ConfigLoader
 
             m_registry->addRender(m_lineIndex, rc);
         }
+
+        Material textMat = {
+            fillColor : sf::Color(m_font_config.RGB[0], m_font_config.RGB[1], m_font_config.RGB[2])
+        };
+        auto text = std::make_shared<sf::Text>(m_font, shapeName);
+        RenderComponent textRender = RenderComponent(text, textMat);
+        ; // text render component
+        m_registry->addTextRender(m_lineIndex, textRender);
     };
 
     ConfigStatementType getStatementType(const std::string &str)
@@ -456,11 +471,15 @@ class ConfigLoader
             break;
         case ConfigStatementType::FONT:
             // 5 args
-            m_font_config = {
-                filePath : words[1],
-                size : std::stoi(words[2]),
-                RGB : {std::stoi(words[3]), std::stoi(words[4]), std::stoi(words[5])}
-            };
+            m_font_config.filePath = words[1];
+            m_font_config.size = std::stoi(words[2]);
+            m_font_config.RGB[0] = std::stoi(words[3]);
+            m_font_config.RGB[1] = std::stoi(words[4]);
+            m_font_config.RGB[2] = std::stoi(words[5]);
+            if (!loadFont())
+            {
+                std::cerr << "Failed to load font\n";
+            }
 
             break;
         case ConfigStatementType::ENTITY_LIKE:
@@ -494,18 +513,6 @@ public:
     std::vector<unsigned int> getWindow()
     {
         return {(unsigned int)m_window_width, (unsigned int)m_window_height};
-    }
-    sf::Font getFont()
-    {
-        sf::Font font;
-
-        if (!font.openFromFile(m_font_config.filePath))
-        {
-            return font;
-        }
-
-        return font;
-        // R
     }
 };
 
